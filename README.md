@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tinutuan Deasy Web
 
-## Getting Started
+Sistem manajemen restoran dan pemesanan (Point of Sale & Order Management) untuk Tinutuan Deasy. Aplikasi web ini dibangun untuk mengelola operasional harian seperti pesanan pelanggan, manajemen menu, serta koordinasi antara kasir dan dapur.
 
-First, run the development server:
+## 🚀 Fitur Utama
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Multi-Role System**: Akses yang dibedakan berdasarkan role: `Admin`, `Kitchen` (Dapur), dan `Superadmin`.
+- **Digital Menu**: Tampilan menu interaktif (`/menu`).
+- **Kitchen Display System**: Tampilan khusus untuk dapur agar dapat melihat dan memproses pesanan secara realtime (`/kitchen`).
+- **Admin/POS Dashboard**: Tampilan kasir dan manajemen operasional (`/admin`).
+- **Superadmin Panel**: Kontrol penuh untuk manajemen data dan pengguna (`/superadmin`).
+- **Export & Laporan PDF**: Pembuatan struk dan laporan secara dinamis menggunakan `jspdf`.
+- **Autentikasi & Database**: Pengelolaan data yang aman dan cepat ditenagai oleh Supabase.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠️ Teknologi yang Digunakan
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Frontend Framework**: [Next.js](https://nextjs.org/) (App Router)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **Backend & Database**: [Supabase](https://supabase.com/) (PostgreSQL & Supabase Auth)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **PDF Generation**: `jspdf` & `jspdf-autotable`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📦 Instalasi & Cara Menjalankan
 
-## Learn More
+1. **Clone repository ini**
+   ```bash
+   git clone https://github.com/aditkaryudie/TinutuanDeasyWeb.git
+   cd TinutuanDeasyWeb
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. **Pengaturan Environment Variables**
+   Salin `.env.example` menjadi `.env.local` (atau `.env`) dan isi nilai-nilainya sesuai dengan proyek Supabase Anda.
+   ```bash
+   cp .env.example .env.local
+   ```
+   Pastikan konfigurasi kunci berikut sudah diatur:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+4. **Setup Database**
+   Anda bisa menggunakan file `supabase_schema.sql` yang tersedia di root proyek untuk menginisialisasi tabel dan policy (RLS) di dalam project Supabase Anda.
 
-## Deploy on Vercel
+5. **Jalankan Development Server**
+   ```bash
+   npm run dev
+   ```
+   Buka [http://localhost:3000](http://localhost:3000) di browser untuk melihat hasilnya.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🗄️ Struktur Direktori Utama
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `/src/app/` - Routing utama aplikasi Next.js
+  - `admin/` - Halaman untuk kasir dan admin
+  - `kitchen/` - Halaman untuk operasional dapur
+  - `superadmin/` - Halaman pengaturan master data
+  - `menu/` - Halaman daftar menu makanan/minuman
+- `/src/components/` - Komponen UI yang reusable
+- `/src/lib/` - Setup konfigurasi eksternal (seperti client Supabase)
+- `supabase_schema.sql` - File SQL untuk setup skema database
+
+## 📄 Lisensi
+Hak cipta dilindungi. Penggunaan internal Tinutuan Deasy.

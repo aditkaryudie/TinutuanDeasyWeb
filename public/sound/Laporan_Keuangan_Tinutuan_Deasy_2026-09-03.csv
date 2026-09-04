@@ -1,0 +1,26 @@
+﻿No,ID Pesanan,Tanggal,Waktu,No Meja,Nama Pelanggan,Rincian Menu,Status Pembayaran,Status Pesanan,Total Harga (IDR)
+1,"c0052127-ac2c-489b-8735-8664f31734c7","03 Sep 2026","10.28","1","Tamu Meja 1","Es Teh x1","Lunas (Paid)","pending",5000
+2,"6c801c59-ee03-4d81-a41b-d515bd000571","03 Sep 2026","10.21","1","Tamu Meja 1","Nasi Campur Daging x1","Lunas (Paid)","pending",16000
+3,"df82feb3-16e9-4c1e-9e60-3be5772e4759","03 Sep 2026","10.17","1","Tamu Meja 1","jeruk x1","Lunas (Paid)","completed",8000
+4,"36ba4bee-3bc2-49ed-8ee5-38c672f16521","02 Sep 2026","16.08","10","Tamu Meja 10","Es Teh x1","Lunas (Paid)","completed",5000
+5,"493c8003-927f-458e-84da-caa11f1509c9","02 Sep 2026","16.06","1","Tamu Meja 1","Es Teh x1","Lunas (Paid)","completed",5000
+6,"28e6e48f-dd5d-4641-a76f-b5e48e16e99b","02 Sep 2026","16.06","1","Tamu Meja 1","jeruk x1","Lunas (Paid)","completed",8000
+7,"07a1f598-d22c-4074-9d5a-eeb036833856","02 Sep 2026","16.05","1","Tamu Meja 1","Mie Cakalang x1","Lunas (Paid)","completed",18000
+8,"99543841-d550-4280-b3f8-56d0c7d7374c","02 Sep 2026","16.05","1","Tamu Meja 1","Nasi Campur Daging x1","Lunas (Paid)","completed",16000
+9,"03cd0d90-ea40-4f55-a27a-a1f0db948a9b","02 Sep 2026","16.05","1","Tamu Meja 1","jeruk x1","Lunas (Paid)","completed",8000
+10,"662c469a-207a-4307-8b20-820646e6042c","02 Sep 2026","16.05","1","Tamu Meja 1","Es Teh x1","Lunas (Paid)","completed",5000
+11,"01e42087-da39-4fa5-856e-f971d3c5c2fe","02 Sep 2026","16.04","1","Tamu Meja 1","Nasi Campur Daging x1","Lunas (Paid)","completed",16000
+12,"5493d8f7-a5cf-4e61-aedc-ef3474282140","02 Sep 2026","16.04","1","Tamu Meja 1","Tinutuan Campur x1","Lunas (Paid)","completed",20000
+13,"7f7ae3be-771c-46e7-95b2-7eaa7e7fec75","02 Sep 2026","16.03","1","Tamu Meja 1","Es Teh x1","Lunas (Paid)","completed",5000
+14,"b92fcd92-34f0-427a-93b9-4c4ef5484352","02 Sep 2026","16.02","1","Tamu Meja 1","Es Teh x1","Lunas (Paid)","completed",5000
+15,"354e965c-bdef-4d2c-b548-a34aae93f0c5","02 Sep 2026","16.01","1","Tamu Meja 1","jeruk x1","Lunas (Paid)","completed",8000
+16,"4e3dc48a-4a71-42ac-b476-8fcd9d4254e4","02 Sep 2026","16.00","1","Tamu Meja 1","Es Teh x1","Lunas (Paid)","completed",5000
+17,"07d1af19-cf99-4611-8c91-bd531e8c9c4b","02 Sep 2026","15.58","1","Tamu Meja 1","Mie Cakalang x1","Lunas (Paid)","completed",18000
+18,"b01a3be2-1491-4c60-8971-199b64d63bd3","02 Sep 2026","15.57","1","Tamu Meja 1","Es Teh x1","Lunas (Paid)","completed",5000
+19,"46b49316-ef08-4661-8989-72d981a33dc4","02 Sep 2026","15.53","1","Tamu Meja 1","Es Teh x1; Tinutuan Biasa x1","Lunas (Paid)","completed",23000
+20,"439a29ad-043d-4ee4-bb16-0d641cac1684","02 Sep 2026","15.22","1","Tamu Meja 1","Es Teh x1","Lunas (Paid)","completed",5000
+21,"942231b7-b28a-4dd9-ac66-ded2546a7c92","30 Agu 2026","21.16","12","Tamu Meja 12","-","Lunas (Paid)","completed",23000
+22,"86da9fa0-2bef-45f0-a295-e3dd3ea3dc0e","30 Agu 2026","21.12","12","Tamu Meja 12","-","Pending","completed",5000
+23,"778331c8-2fb7-4a00-aa5b-0e77de0156d7","30 Agu 2026","21.08","12","Tamu Meja 12","-","Pending","completed",5000
+
+"","","","","","","TOTAL OMSET LUNAS","","","227000"
