@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import FinancialReportsView from '@/components/FinancialReportsView'
+import { computeMenuRating, MenuRating } from '@/utils/ratings'
 
 interface MenuCategory {
   id: string | number
@@ -28,6 +29,7 @@ export default function AdminDashboard() {
 
   const [menuList, setMenuList] = useState<MenuItem[]>([])
   const [categories, setCategories] = useState<MenuCategory[]>([])
+  const [dbRatings, setDbRatings] = useState<MenuRating[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -66,6 +68,16 @@ export default function AdminDashboard() {
 
       if (catRes.data) {
         setCategories(catRes.data)
+      }
+
+      // Fetch customer ratings
+      try {
+        const { data: ratingsData } = await supabase.from('menu_ratings').select('*')
+        if (ratingsData) {
+          setDbRatings(ratingsData as MenuRating[])
+        }
+      } catch {
+        // Table might not exist yet
       }
     } catch (err) {
       console.error(err)
@@ -236,8 +248,14 @@ export default function AdminDashboard() {
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
+    document.cookie = 'tinutuan_staff_role=; path=/; max-age=0;'
+    document.cookie = 'tinutuan_staff_email=; path=/; max-age=0;'
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tinutuan_staff_role')
+      localStorage.removeItem('tinutuan_staff_email')
+    }
+    await supabase.auth.signOut().catch(() => {})
+    window.location.href = '/login'
   }
 
   const totalMenu = menuList.length
@@ -351,10 +369,41 @@ export default function AdminDashboard() {
                           ) : (
                             <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center text-yellow-900/70 text-xs">No img</div>
                           )}
-                          <span>{item.name}</span>
+                          <div>
+                            <div>{item.name}</div>
+                            {(() => {
+                              const r = computeMenuRating(item, dbRatings)
+                              return (
+                                <div className="flex items-center gap-1 text-[11px] font-bold text-amber-700 mt-0.5">
+                                  <span>⭐ {r.avg.toFixed(1)}</span>
+                                  <span className="text-yellow-900/50 font-normal">({r.count} ulasan)</span>
+                                </div>
+                              )
+                            })()}
+                          </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-yellow-900/70">{item.menu_categories?.name || '-'}</td>
+                      <td className="py-3 px-4 text-yellow-900/70">
+                        {(() => {
+                          const catName = item.menu_categories?.name
+                          if (!catName) return <span className="text-yellow-900/40">-</span>
+                          if (/best\s*seller/i.test(catName)) {
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-gradient-to-r from-amber-100 to-orange-100 text-amber-900 border border-amber-300 shadow-2xs">
+                                🔥 {catName}
+                              </span>
+                            )
+                          }
+                          if (/promo|hemat/i.test(catName)) {
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
+                                🏷️ {catName}
+                              </span>
+                            )
+                          }
+                          return <span className="font-medium">{catName}</span>
+                        })()}
+                      </td>
                       <td className="py-3 px-4 text-yellow-900/80">{formatRupiah(item.price)}</td>
                       <td className="py-3 px-4 text-center">
                         <button

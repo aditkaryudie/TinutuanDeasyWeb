@@ -8,8 +8,12 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://dummy.supabase.co'
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key'
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://desieqgcrkmseynoiqam.supabase.co'
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    'sb_publishable_qg3t-RK4q-5hBa_eE_u0gg_g4Kb4dJI'
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
@@ -33,17 +37,62 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   const isDummySupabase =
-    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy.supabase.co')
+    !supabaseUrl || supabaseUrl.includes('dummy.supabase.co')
 
-  let user = null
+  let user: any = null
+  let role: string | null = null
+
+  // 1. Check custom staff role cookie first (Quick Staff Access & Kiosk Mode)
+  const staffRoleCookie = request.cookies.get('tinutuan_staff_role')?.value
+  if (staffRoleCookie && ['super_admin', 'admin', 'kitchen'].includes(staffRoleCookie)) {
+    role = staffRoleCookie
+    user = {
+      id: 'staff-' + staffRoleCookie,
+      email: request.cookies.get('tinutuan_staff_email')?.value || `${staffRoleCookie}@tinutuandeasy.com`,
+    }
+  }
+
+  // 2. Check Supabase Auth session if role not established by cookie
+  if (!role && !isDummySupabase) {
+    try {
+      const { data } = await supabase.auth.getUser()
+      if (data?.user) {
+        user = data.user
+        // Check user metadata
+        const metaRole = data.user.user_metadata?.role || data.user.app_metadata?.role
+        if (metaRole && ['super_admin', 'admin', 'kitchen'].includes(metaRole)) {
+          role = metaRole
+        } else {
+          // Check 'users' table
+          const { data: userData } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', data.user.id)
+            .single()
+          role = userData?.role || null
+        }
+
+        // Fallback inference if authenticated but role not in database
+        if (!role && data.user.email) {
+          if (data.user.email.includes('superadmin') || data.user.email.includes('owner')) {
+            role = 'super_admin'
+          } else if (data.user.email.includes('kitchen') || data.user.email.includes('dapur')) {
+            role = 'kitchen'
+          } else {
+            role = 'admin'
+          }
+        }
+      }
+    } catch {
+      // Ignore user auth fetch error
+    }
+  }
+
+  // 1. Global Maintenance Mode Check
+  const maintenanceCookie = request.cookies.get('tinutuan_maintenance')?.value
+  let isMaintenance = maintenanceCookie === 'true'
 
   if (!isDummySupabase) {
-    // 1. Get authenticated user
-    const { data } = await supabase.auth.getUser()
-    user = data.user
-
-    // 2. Global Maintenance Mode Check
     try {
       const { data: setting } = await supabase
         .from('system_settings')
@@ -51,29 +100,53 @@ export async function middleware(request: NextRequest) {
         .eq('key', 'maintenance_mode')
         .single()
 
-      const isMaintenance = setting?.value === 'true' || setting?.value === true
-
-      if (isMaintenance) {
-        const allowedInMaintenance = [
-          '/superadmin',
-          '/login',
-          '/maintenance',
-          '/api',
-        ]
-        const isAllowed = allowedInMaintenance.some((path) =>
-          pathname.startsWith(path)
-        )
-
-        if (!isAllowed) {
-          return NextResponse.redirect(new URL('/maintenance', request.url))
-        }
+      if (setting) {
+        isMaintenance = setting.value === 'true' || setting.value === true
       }
     } catch {
-      // If table doesn't exist or query fails, continue without blocking
+      // If table doesn't exist yet, preserve cookie-based state
     }
   }
 
-  // 3. Route Protection for Protected Paths
+  // Super Admin can always access the entire website during maintenance
+  const isSuperAdmin = role === 'super_admin'
+
+  if (isMaintenance && !isSuperAdmin) {
+    const allowedInMaintenance = [
+      '/superadmin',
+      '/login',
+      '/maintenance',
+      '/api',
+    ]
+    const isAllowed = allowedInMaintenance.some((path) =>
+      pathname.startsWith(path)
+    )
+
+    if (!isAllowed) {
+      const redirectRes = NextResponse.redirect(new URL('/maintenance', request.url))
+      redirectRes.cookies.set({
+        name: 'tinutuan_maintenance',
+        value: 'true',
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60,
+        sameSite: 'lax',
+      })
+      return redirectRes
+    }
+  } else if (!isMaintenance && pathname === '/maintenance') {
+    // If maintenance is turned off and visitor is on /maintenance, redirect back to menu
+    const redirectRes = NextResponse.redirect(new URL('/menu', request.url))
+    redirectRes.cookies.set({
+      name: 'tinutuan_maintenance',
+      value: 'false',
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60,
+      sameSite: 'lax',
+    })
+    return redirectRes
+  }
+
+  // 2. Route Protection for Protected Paths
   const protectedRoutes = ['/admin', '/kitchen', '/superadmin']
   const isProtectedRoute = protectedRoutes.some((route) =>
     pathname.startsWith(route)
@@ -86,15 +159,6 @@ export async function middleware(request: NextRequest) {
       loginUrl.searchParams.set('redirectedFrom', pathname)
       return NextResponse.redirect(loginUrl)
     }
-
-    // Role-based Access Control
-    const { data: userData } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    const role = userData?.role
 
     // /superadmin restriction
     if (pathname.startsWith('/superadmin') && role !== 'super_admin') {
@@ -110,15 +174,30 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    // /kitchen restriction
+    // /kitchen restriction (kitchen, admin, super_admin)
     if (
       pathname.startsWith('/kitchen') &&
       role !== 'kitchen' &&
+      role !== 'admin' &&
       role !== 'super_admin'
     ) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
   }
+
+  // Do not overwrite cookies for API routes
+  if (pathname.startsWith('/api')) {
+    return response
+  }
+
+  // Keep cookie in sync with current state
+  response.cookies.set({
+    name: 'tinutuan_maintenance',
+    value: isMaintenance ? 'true' : 'false',
+    path: '/',
+    maxAge: 30 * 24 * 60 * 60,
+    sameSite: 'lax',
+  })
 
   return response
 }

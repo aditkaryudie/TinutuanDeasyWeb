@@ -40,10 +40,10 @@ Sistem manajemen restoran dan pemesanan (Point of Sale & Order Management) untuk
    ```
    Pastikan konfigurasi kunci berikut sudah diatur:
    - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (atau `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`)
 
 4. **Setup Database**
-   Anda bisa menggunakan file `supabase_schema.sql` yang tersedia di root proyek untuk menginisialisasi tabel dan policy (RLS) di dalam project Supabase Anda.
+   Anda bisa menggunakan file `supabase_schema.sql` yang tersedia di root proyek untuk menginisialisasi tabel dan policy (RLS) di dalam project Supabase Anda. Pastikan tabel `system_settings` sudah dijalankan agar fitur Global Maintenance Mode aktif secara cloud ke seluruh perangkat.
 
 5. **Jalankan Development Server**
    ```bash

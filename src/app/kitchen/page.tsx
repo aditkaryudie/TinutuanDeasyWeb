@@ -53,11 +53,18 @@ export default function KitchenDashboard() {
       return
     }
 
+    const hasStaffCookie =
+      typeof document !== 'undefined' &&
+      (document.cookie.includes('tinutuan_staff_role=kitchen') ||
+        document.cookie.includes('tinutuan_staff_role=admin') ||
+        document.cookie.includes('tinutuan_staff_role=super_admin'))
+
     const {
       data: { user },
     } = await supabase.auth.getUser()
-    if (!user) {
-      router.push('/login')
+
+    if (!user && !hasStaffCookie) {
+      router.push('/login?redirectedFrom=/kitchen')
       return
     }
     fetchActiveOrders()
@@ -232,8 +239,14 @@ export default function KitchenDashboard() {
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
+    document.cookie = 'tinutuan_staff_role=; path=/; max-age=0;'
+    document.cookie = 'tinutuan_staff_email=; path=/; max-age=0;'
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tinutuan_staff_role')
+      localStorage.removeItem('tinutuan_staff_email')
+    }
+    await supabase.auth.signOut().catch(() => {})
+    window.location.href = '/login'
   }
 
   const formatTime = (isoString: string) => {

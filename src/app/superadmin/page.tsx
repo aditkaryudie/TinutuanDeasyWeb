@@ -37,6 +37,9 @@ export default function SuperAdminDashboard() {
   
   // Modal & Form States
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
+  const [isSqlModalOpen, setIsSqlModalOpen] = useState(false)
+  const [tableSettingsExists, setTableSettingsExists] = useState<boolean | null>(null)
+  const [sqlCopied, setSqlCopied] = useState(false)
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newName, setNewName] = useState('')
@@ -84,31 +87,74 @@ export default function SuperAdminDashboard() {
     }
 
     try {
+      // 1. Check if authenticated via role cookie or localStorage
+      const hasCookieSuperAdmin =
+        typeof document !== 'undefined' &&
+        document.cookie.includes('tinutuan_staff_role=super_admin')
+
+      const storedEmail =
+        (typeof window !== 'undefined' && localStorage.getItem('tinutuan_staff_email')) ||
+        'superadmin@tinutuandeasy.com'
+
+      // 2. Check Supabase Auth user
       const {
         data: { user },
         error: authError,
       } = await supabase.auth.getUser()
 
-      if (authError || !user) {
-        router.push('/login')
+      if (!user && !hasCookieSuperAdmin) {
+        router.push('/login?redirectedFrom=/superadmin')
         return
       }
 
-      // Check role in 'users' table
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('id, email, role, full_name')
-        .eq('id', user.id)
-        .single()
+      if (user) {
+        let role = user.user_metadata?.role || user.app_metadata?.role
+        let fullName = user.user_metadata?.full_name || 'Super Admin'
 
-      if (userError || !userData || userData.role !== 'super_admin') {
-        alert('Akses Ditolak! Halaman ini hanya untuk Super Admin.')
-        await supabase.auth.signOut()
-        router.push('/login')
-        return
+        try {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('id, role, full_name')
+            .eq('id', user.id)
+            .single()
+
+          if (userData?.role) {
+            role = userData.role
+            fullName = userData.full_name || fullName
+          }
+        } catch {
+          // Table might not exist or error, continue with metadata role
+        }
+
+        const isSuperAdmin =
+          role === 'super_admin' ||
+          user.email?.includes('superadmin') ||
+          hasCookieSuperAdmin
+
+        if (!isSuperAdmin) {
+          alert('Akses Ditolak! Halaman ini hanya untuk Super Admin.')
+          document.cookie = 'tinutuan_staff_role=; path=/; max-age=0;'
+          await supabase.auth.signOut().catch(() => {})
+          router.push('/login')
+          return
+        }
+
+        setCurrentUser({
+          id: user.id,
+          email: user.email || storedEmail,
+          role: 'super_admin',
+          full_name: fullName,
+        })
+      } else {
+        // Quick access / Cookie based super admin
+        setCurrentUser({
+          id: 'quick-superadmin',
+          email: storedEmail,
+          role: 'super_admin',
+          full_name: 'Super Admin',
+        })
       }
 
-      setCurrentUser(userData)
       loadInitialData()
     } catch (err) {
       console.error(err)
@@ -134,15 +180,30 @@ export default function SuperAdminDashboard() {
         setStaffList(staffData)
       }
 
-      // Fetch System Settings (Maintenance Mode)
-      const { data: settingData } = await supabase
-        .from('system_settings')
-        .select('value')
-        .eq('key', 'maintenance_mode')
-        .single()
+      // Fetch System Settings (Maintenance Mode) via API & Supabase
+      try {
+        const maintRes = await fetch('/api/maintenance')
+        if (maintRes.ok) {
+          const maintData = await maintRes.json()
+          setIsMaintenanceMode(Boolean(maintData.maintenance))
+          setTableSettingsExists(Boolean(maintData.tableExists))
+        } else {
+          // Fallback direct Supabase
+          const { data: settingData, error: settingErr } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'maintenance_mode')
+            .single()
 
-      if (settingData) {
-        setIsMaintenanceMode(settingData.value === 'true' || settingData.value === true)
+          if (!settingErr && settingData) {
+            setIsMaintenanceMode(settingData.value === 'true' || settingData.value === true)
+            setTableSettingsExists(true)
+          } else if (settingErr?.code === 'PGRST205') {
+            setTableSettingsExists(false)
+          }
+        }
+      } catch (maintErr) {
+        console.error('Failed to load maintenance status:', maintErr)
       }
 
       const endTime = performance.now()
@@ -167,16 +228,26 @@ export default function SuperAdminDashboard() {
     setIsMaintenanceMode(newStatus)
 
     try {
-      const { error } = await supabase
-        .from('system_settings')
-        .upsert(
-          { key: 'maintenance_mode', value: String(newStatus), updated_at: new Date().toISOString() },
-          { onConflict: 'key' }
-        )
+      const response = await fetch('/api/maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maintenance: newStatus }),
+      })
 
-      if (error) {
-        console.error('Maintenance setting error:', error.message)
-        // Fallback to table check or notify
+      const data = await response.json()
+
+      if (!response.ok) {
+        // Revert on complete failure
+        setIsMaintenanceMode(!newStatus)
+        alert('Gagal memperbarui status maintenance mode.')
+        return
+      }
+
+      if (data.tableExists === false) {
+        setTableSettingsExists(false)
+        setIsSqlModalOpen(true)
+      } else {
+        setTableSettingsExists(true)
       }
 
       // Add audit log
@@ -191,7 +262,9 @@ export default function SuperAdminDashboard() {
         ...prev,
       ])
     } catch (err) {
-      console.error(err)
+      console.error('Toggle maintenance error:', err)
+      setIsMaintenanceMode(!newStatus)
+      alert('Terjadi kesalahan saat menghubungi server.')
     } finally {
       setIsTogglingMaintenance(false)
     }
@@ -264,6 +337,19 @@ export default function SuperAdminDashboard() {
 
         if (dbError) {
           console.warn('Upsert role note:', dbError.message)
+          if (dbError.message?.includes('email')) {
+            // Fallback if email column doesn't exist yet
+            try {
+              await supabase.from('users').upsert({
+                id: authData.user.id,
+                full_name: newName,
+                role: newRole,
+                created_at: new Date().toISOString(),
+              })
+            } catch {
+              // Ignore fallback error
+            }
+          }
         }
 
         const newStaffMember: StaffUser = {
@@ -303,8 +389,14 @@ export default function SuperAdminDashboard() {
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
+    document.cookie = 'tinutuan_staff_role=; path=/; max-age=0;'
+    document.cookie = 'tinutuan_staff_email=; path=/; max-age=0;'
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tinutuan_staff_role')
+      localStorage.removeItem('tinutuan_staff_email')
+    }
+    await supabase.auth.signOut().catch(() => {})
+    window.location.href = '/login'
   }
 
   // Loading Screen for Auth Guard
@@ -455,6 +547,24 @@ export default function SuperAdminDashboard() {
               ? '✓ Matikan Maintenance'
               : '⛔ Aktifkan Maintenance'}
           </button>
+
+          {tableSettingsExists === false && (
+            <div className="w-full mt-2 p-4 bg-amber-50 border border-amber-300 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-amber-900">
+                <span className="text-base">⚠️</span>
+                <span>
+                  <strong>Database Supabase Belum Lengkap:</strong> Tabel <code>public.system_settings</code> belum dibuat. Jalankan query SQL di Supabase agar status pemeliharaan aktif permanen di seluruh perangkat pengunjung.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSqlModalOpen(true)}
+                className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition shadow-sm cursor-pointer whitespace-nowrap"
+              >
+                📄 Lihat & Salin Query SQL
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 2. System Health & Widgets Grid */}
@@ -717,6 +827,163 @@ export default function SuperAdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Panduan SQL Supabase */}
+      {isSqlModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-[#FFFCF5] border border-yellow-200/60 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl relative space-y-5">
+            <div className="flex justify-between items-center pb-3 border-b border-yellow-200/60">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🛠️</span>
+                <div>
+                  <h2 className="text-lg font-bold text-yellow-950">Setup Tabel Database Supabase</h2>
+                  <p className="text-xs text-yellow-900/70">Diperlukan agar maintenance mode berlaku global</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsSqlModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-xl p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="text-xs text-yellow-900/80 leading-relaxed space-y-2">
+              <p>
+                Agar fitur <strong>Maintenance Mode</strong> dapat mengunci akses seluruh pengguna di semua perangkat, buat tabel <code>system_settings</code> di Supabase Anda:
+              </p>
+              <ol className="list-decimal list-inside space-y-1 pl-1 font-medium text-yellow-950">
+                <li>Buka Supabase Dashboard project Anda (menu <strong>SQL Editor</strong>).</li>
+                <li>Klik tombol <strong>Salin SQL</strong> di bawah ini.</li>
+                <li>Tempel (paste) ke SQL Editor Supabase, lalu klik tombol <strong>Run</strong>.</li>
+              </ol>
+            </div>
+
+            <div className="relative">
+              <pre className="p-4 bg-gray-900 text-green-400 font-mono text-[11px] rounded-xl overflow-x-auto max-h-56 select-all border border-gray-800">
+{`-- 1. Setup system_settings (Maintenance Mode)
+CREATE TABLE IF NOT EXISTS public.system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow full access on system_settings" ON public.system_settings;
+CREATE POLICY "Allow full access on system_settings" ON public.system_settings
+  FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+INSERT INTO public.system_settings (key, value) VALUES ('maintenance_mode', 'false')
+ON CONFLICT (key) DO NOTHING;
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.system_settings;
+
+-- 2. Setup users (Staf & Hak Akses)
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS full_name TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'kitchen';
+
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access on users" ON public.users;
+CREATE POLICY "Allow all access on users" ON public.users
+  FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- 3. Setup menu_ratings (Rating & Ulasan Pelanggan)
+CREATE TABLE IF NOT EXISTS public.menu_ratings (
+  id BIGSERIAL PRIMARY KEY,
+  order_id BIGINT REFERENCES public.orders(id) ON DELETE SET NULL,
+  menu_id BIGINT REFERENCES public.menu(id) ON DELETE CASCADE,
+  rating INT CHECK (rating >= 1 AND rating <= 5) NOT NULL,
+  review TEXT,
+  customer_name TEXT DEFAULT 'Pelanggan',
+  table_number TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.menu_ratings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow full access on menu_ratings" ON public.menu_ratings;
+CREATE POLICY "Allow full access on menu_ratings" ON public.menu_ratings
+  FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.menu_ratings;`}
+              </pre>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const sqlText = `-- 1. Setup system_settings (Maintenance Mode)
+CREATE TABLE IF NOT EXISTS public.system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow full access on system_settings" ON public.system_settings;
+CREATE POLICY "Allow full access on system_settings" ON public.system_settings
+  FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+INSERT INTO public.system_settings (key, value) VALUES ('maintenance_mode', 'false')
+ON CONFLICT (key) DO NOTHING;
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.system_settings;
+
+-- 2. Setup users (Staf & Hak Akses)
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS full_name TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'kitchen';
+
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access on users" ON public.users;
+CREATE POLICY "Allow all access on users" ON public.users
+  FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- 3. Setup menu_ratings (Rating & Ulasan Pelanggan)
+CREATE TABLE IF NOT EXISTS public.menu_ratings (
+  id BIGSERIAL PRIMARY KEY,
+  order_id BIGINT REFERENCES public.orders(id) ON DELETE SET NULL,
+  menu_id BIGINT REFERENCES public.menu(id) ON DELETE CASCADE,
+  rating INT CHECK (rating >= 1 AND rating <= 5) NOT NULL,
+  review TEXT,
+  customer_name TEXT DEFAULT 'Pelanggan',
+  table_number TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.menu_ratings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow full access on menu_ratings" ON public.menu_ratings;
+CREATE POLICY "Allow full access on menu_ratings" ON public.menu_ratings
+  FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.menu_ratings;`
+                  navigator.clipboard.writeText(sqlText)
+                  setSqlCopied(true)
+                  setTimeout(() => setSqlCopied(false), 2500)
+                }}
+                className="absolute top-2 right-2 px-3 py-1.5 bg-deasy-yellow hover:bg-orange-500 text-yellow-950 hover:text-white font-bold text-[11px] rounded-lg shadow transition cursor-pointer"
+              >
+                {sqlCopied ? '✓ Tersalin!' : '📋 Salin SQL'}
+              </button>
+            </div>
+
+            <div className="pt-3 border-t border-yellow-200/60 flex flex-wrap justify-between items-center gap-3">
+              <span className="text-[11px] text-gray-500">
+                Setelah dijalankan, refresh halaman ini untuk mengonfirmasi status database.
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSqlModalOpen(false)
+                  loadInitialData()
+                }}
+                className="px-4 py-2 bg-yellow-950 hover:bg-yellow-900 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow"
+              >
+                Saya Sudah Menjalankan SQL
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -12,6 +12,11 @@ CREATE TABLE IF NOT EXISTS public.users (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Pastikan kolom email dan full_name ada jika tabel sudah pernah dibuat sebelumnya
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS full_name TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'kitchen';
+
 -- RLS untuk tabel users
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
@@ -83,14 +88,26 @@ CREATE POLICY "Allow full access on menu" ON public.menu
   USING (true)
   WITH CHECK (true);
 
--- Seed Contoh Menu Tinutuan Deasy
-INSERT INTO public.menu (name, price, is_available, description) VALUES
-('Tinutuan Spesial Komplit', 25000, true, 'Bubur Manado khas Deasy dengan sayur lengkap, jagung, labu kuning, dan ikan cakalang.'),
-('Tinutuan Biasa', 18000, true, 'Bubur Manado segar khas rempah tradisional.'),
-('Perkedel Jagung (Isi 3)', 10000, true, 'Bakwan jagung renyah manis gurih.'),
-('Ikan Cakalang Fufu Suwir', 15000, true, 'Cakalang asap rica khas Manado pedas gurih.'),
-('Es Kacang Merah Brenebon', 12000, true, 'Es kacang merah manis segar dengan susu kental manis.')
+-- Seed Kategori Menu
+INSERT INTO public.menu_categories (name) VALUES
+('Best Seller Minggu Ini'),
+('Promo Paket Hemat'),
+('Makanan'),
+('Minuman')
+ON CONFLICT (name) DO NOTHING;
+
+-- Seed Contoh Menu Tinutuan Deasy (Termasuk Kategori Promosi & Best Seller)
+INSERT INTO public.menu (name, price, is_available, description, image_url, category_id, variants) VALUES
+('Paket Juara Tinutuan Komplit', 32000, true, 'Menu paling laris minggu ini! 1 Tinutuan Komplit labu kuning & cakalang fufu + 2 Perkedel Jagung renyah + 1 Es Teh Manis Segar.', '/img/biasa.jpg', (SELECT id FROM public.menu_categories WHERE name = 'Best Seller Minggu Ini' LIMIT 1), '["Pedas Sedang (Rica Roa)", "Ekstra Pedas Mantap", "Tidak Pedas / Kuah Original"]'::jsonb),
+('Tinutuan Spesial Cakalang Asap', 24000, true, 'Bubur Manado otentik beraroma kemangi segar dengan labu kuning manis, jagung pipil, bayam, kangkung, dan topping cakalang fufu asap rica gurih berlimpah.', '/img/campur.jpg', (SELECT id FROM public.menu_categories WHERE name = 'Best Seller Minggu Ini' LIMIT 1), '["Original Segar", "Ekstra Sambal Roa"]'::jsonb),
+('Mie Cakalang Kuah Rempah Spesial', 20000, true, 'Mie kuning kenyal khas Minahasa dengan siraman kuah kaldu ikan cakalang hangat bertabur daun bawang, sayur sawi hijau, dan bawang goreng renyah.', '/img/geprek.jpg', (SELECT id FROM public.menu_categories WHERE name = 'Best Seller Minggu Ini' LIMIT 1), '["Kuah Gurih Original", "Kuah Pedas Rica"]'::jsonb),
+('Perkedel Jagung Crispy Manado (Isi 5)', 15000, true, 'Bakwan jagung manis pipil renyah keemasan khas Manado, disajikan hangat dengan cocolan sambal dabu-dabu rica iris pedas segar.', '/img/daging.jpg', (SELECT id FROM public.menu_categories WHERE name = 'Best Seller Minggu Ini' LIMIT 1), '[]'::jsonb),
+('Paket Duo Tinutuan Hemat', 38000, true, 'Pilihan pas untuk berdua! 2 Tinutuan Biasa + 2 Es Teh Manis Segar. Hemat dan bikin kenyang bersama.', '/img/biasa.jpg', (SELECT id FROM public.menu_categories WHERE name = 'Promo Paket Hemat' LIMIT 1), '["Keduanya Pedas", "Keduanya Tidak Pedas", "1 Pedas + 1 Tidak Pedas"]'::jsonb),
+('Paket Nyantai: Perkedel + Es Brenebon', 22000, true, 'Kombinasi camilan dan dessert khas Manado! 1 Porsi Perkedel Jagung hangat renyah + 1 Es Kacang Merah Brenebon cokelat manis segar.', '/img/es_nutrisari.jpg', (SELECT id FROM public.menu_categories WHERE name = 'Promo Paket Hemat' LIMIT 1), '[]'::jsonb),
+('Tinutuan Biasa', 18000, true, 'Bubur Manado segar khas rempah tradisional.', '/img/biasa.jpg', (SELECT id FROM public.menu_categories WHERE name = 'Makanan' LIMIT 1), '[]'::jsonb),
+('Es Teh Manis Segar', 5000, true, 'Es teh manis segar pelepas dahaga.', '/img/Es-teh-tawar-manis.jpg', (SELECT id FROM public.menu_categories WHERE name = 'Minuman' LIMIT 1), '[]'::jsonb)
 ON CONFLICT DO NOTHING;
+
 
 
 -- 3. TABEL ORDERS
@@ -161,7 +178,33 @@ INSERT INTO public.system_settings (key, value) VALUES
 ('maintenance_mode', 'false')
 ON CONFLICT (key) DO NOTHING;
 
+-- 6. TABEL MENU_RATINGS (Rating & Ulasan Pelanggan)
+CREATE TABLE IF NOT EXISTS public.menu_ratings (
+  id BIGSERIAL PRIMARY KEY,
+  order_id BIGINT REFERENCES public.orders(id) ON DELETE SET NULL,
+  menu_id BIGINT REFERENCES public.menu(id) ON DELETE CASCADE,
+  rating INT CHECK (rating >= 1 AND rating <= 5) NOT NULL,
+  review TEXT,
+  customer_name TEXT DEFAULT 'Pelanggan',
+  table_number TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.menu_ratings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all on menu_ratings" ON public.menu_ratings;
+DROP POLICY IF EXISTS "Allow full access on menu_ratings" ON public.menu_ratings;
+
+CREATE POLICY "Allow full access on menu_ratings" ON public.menu_ratings
+  FOR ALL
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
 -- Aktifkan Realtime Replication untuk tabel terkait
 ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.order_items;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.menu;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.system_settings;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.menu_ratings;
+
